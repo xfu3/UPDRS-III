@@ -1,0 +1,412 @@
+---
+title: "UPDRS data cleaning"
+author: "Xilai Fu"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output:
+  html_document:
+    number_sections: true
+    css: style.css
+    code_folding: hide
+    toc: true
+    toc_float:
+      collapsed: true 
+      smooth_scroll: true
+---
+```{r}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+
+# Package
+```{r setup, include=FALSE}
+# Packages -----
+library(stringr)
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lattice)
+library(magrittr)
+library(miscTools)
+library(tidyverse)
+library(plyr)
+library(splines)
+library(MASS)
+library(lspline)
+library(ggrepel)
+```
+
+
+
+# Functions
+```{r setup, include=FALSE}
+####Extract num from string
+numextract<-function(string){
+  num1<-0
+  if(grepl("months",string)){
+    num1<- as.numeric(str_extract(string,"\\-*\\d+\\.*\\d*"))
+    num1<-num1/12
+  }else{
+    num1<-as.numeric(str_extract(string,"\\-*\\d+\\.*\\d*"))
+  }
+  return(num1)
+}
+
+# find row name 
+index_fun <- function(dat, target, name){
+  position <- (dat[, name] == target)
+  rownames(dat)[position]
+}
+
+
+# ggplot text(they ended up being useless for my work)
+lm_eqn1 <- function(df){
+  m <- lm(Scores ~ Distance, df);
+  eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(R)^2~"="~r2, 
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  as.character(as.expression(eq));
+}
+
+lm_eqn2 <- function(df){
+  m <- lm(Scores ~ Distance+I(Distance^2), df);
+  eq <- substitute(italic(y) == a + b %.% italic(x)+c %.% italic(x^2)*","~~italic(R)^2~"="~r2, 
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        c = format(unname(coef(m)[3]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  
+  
+  as.character(as.expression(eq));
+}
+
+lm_eqn3 <- function(df){
+  m <- lm(Scores ~ Distance+I(Distance^2)+I(Distance^3), df);
+  eq <- substitute(italic(y) == a + b %.% italic(x)+c %.% italic(x^2)+d %.% italic(x^3)*","~~italic(R)^2~"="~r2, 
+                   list(a = format(unname(coef(m)[1]), digits = 2),
+                        b = format(unname(coef(m)[2]), digits = 2),
+                        c = format(unname(coef(m)[3]), digits = 2),
+                        d = format(unname(coef(m)[4]), digits = 2),
+                        r2 = format(summary(m)$r.squared, digits = 3)))
+  
+  
+  as.character(as.expression(eq));
+}
+
+```
+
+
+* Read data
+```{r }
+data = read.csv(file="UPDRS1updated.csv",header=TRUE,fileEncoding="latin1")
+data <-data[data$Dx=="PD",]
+```
+
+# Data Cleaning
+## Primary data manipulation/cleaning
+```{r eval=FALSE, include=FALSE}
+## create the ID and delete MMSE and MOCA
+a <- seq(13, 141, 4)
+b <- seq(14, 142, 4)
+ID = paste(data$Number,data$Initial,sep="") 
+data1 <- subset(data, select = -c(a,b))
+columns = subset(data1,select=-c(1,2))
+data2 = cbind(ID = ID,columns)
+
+## Convert all units("Year"","month"") into "Year".(Temporary) for wide formate data
+data2$Time.to.first.UPDRS.III<-as.character(data2$Time.to.first.UPDRS.III)
+data2$Time.to.first.UPDRS.III<-sapply(data2$Time.to.first.UPDRS.III,function(x){as.numeric(numextract(x))})
+data2$Time.to.first.UPDRS.III<-as.numeric(data2$Time.to.first.UPDRS.III)
+data2$Time.to.first.UPDRS.III<-round(data2$Time.to.first.UPDRS.III,2)
+
+## Spilit the data into two parts and change them into required format
+s<-seq(11,75,2)
+t<-seq(10,74,2)
+sub_str <-subset(data2,select =-s)
+sub_num <-subset(data2,select =c(1,s))
+
+## Change the wide format into the long format for sub1
+substr_long <- gather(sub_str, visitTimes, Distance, Year:Year.32, factor_key = TRUE)
+p<-seq(11,42,1)
+substr_long <- substr_long[order(substr_long$ID), ]
+
+
+## Change the wide format into the long format for sub2
+subnum_long <- gather(sub_num,UPDRS.III, Scores, UPDRS.III:UPDRS.III.32, factor_key = TRUE)
+subnum_long <- subnum_long[order(subnum_long$ID), ]
+
+
+## Combine sub1_long and sub2_long
+extra <-subset(subnum_long,select=c(2,3))
+totalData <-cbind(substr_long,extra)
+totalData$visitTimes <- as.character(totalData$visitTimes)
+
+
+## Convert the visitTimes into numeric
+visitTimes<-unique(totalData$visitTimes)
+totalData$visitTimes<-sapply(totalData$visitTimes, function(x){which(visitTimes %in% x)})
+
+## Excluding rows with empty scores/Distance(filter 1,9 patients were dropped because of no observations)
+updatedData<-totalData[!is.na(totalData$Scores), ]
+updatedData<-updatedData[updatedData$Scores!="", ]
+updatedData<-updatedData[!is.na(updatedData$Distance), ]
+
+### Excluding Year.Dx(mark)
+updatDat1 <-subset(updatedData,select = -c(5))
+
+updatDat1$Time.to.first.UPDRS.III[updatDat1$ID=="127LF"] <-"3.5"
+updatDat1$Time.to.first.UPDRS.III<-as.character(updatDat1$Time.to.first.UPDRS.III)
+#length(unique(updatDat1$ID))
+
+
+## (On/off manipulation)
+for(j in 1:length(updatDat1$ID)){
+  if(grepl("ON/OFF",updatDat1$Score[j]) ==TRUE){
+    updatDat1$text[j]<-"ON/OFF"
+    }else if(grepl("OFF meds ON DBS",updatDat1$Score[j],"OFF meds ON DBS")==TRUE){
+    updatDat1$text[j]<-"(OFF meds ON DBS)"
+    }else if(grepl("(OFF meds ON optimised DBS)",updatDat1$Score[j])==TRUE){
+    updatDat1$text[j]<-"(OFF meds ON optimised DBS)"
+    }else if(grepl("OFF",updatDat1$Score[j])==TRUE){
+    updatDat1$text[j]<-"OFF"  
+    }else{
+    updatDat1$text[j]<-"ON"
+  }
+}
+
+## Extract numeric part of the scores
+updatDat1$Scores<-sapply(updatDat1$Scores,function(x){as.numeric(numextract(x))})
+
+## unique manipulation
+updatDat1[updatDat1$ID=="127LF",]$Time.to.first.UPDRS.III<-3.5
+```
+
+```{r}
+## Age cut
+data2$Year.Dx<-as.integer(str_extract(data2$Year.Dx,"\\-*\\d+\\.*\\d*"))
+data2$Age.at.Dx<-as.integer(data2$Age.at.Dx)
+data2$Age.at.Dx1<-cut(data2$Age.at.Dx,c(25,35,45,55,65,75,85,95),right = FALSE)
+data2$gap<-cut(data2$Time.to.first.UPDRS.III,c(0,0.0001,1,5,10,15,20,25,30,35,39),right = FALSE)
+```
+
+
+## Secondary data cleaning
+### data split by diagnosis and filter stage1
+Since we are only interested in **ON medication** score modeling for patients, we decided to drop the scores that are not **ON medication**
+```{r time, eval=FALSE, include=FALSE}
+## data type deletion and type conversion
+updatDat1 <-
+  updatDat1 %>% dplyr::select(-c(visitTimes, UPDRS.III, DOB..DD.MM.YYYY.))
+updatDat1$Scores<-as.numeric(updatDat1$Scores)
+updatDat1$Time.to.first.UPDRS.III<-as.numeric(updatDat1$Time.to.first.UPDRS.III)
+updatDat1$Distance<-as.integer(updatDat1$Distance)
+
+## ON/OFF manipulation
+newRow<-updatDat1[14,]
+row1<-updatDat1[1:14,]
+row2<-updatDat1[-c(1:14),]
+updatDat1<-rbind(row1,newRow,row2)
+updatDat1$Scores[14]<-"24.5"
+updatDat1$Scores[15]<-"46"
+updatDat1$text[14]<-"ON"
+updatDat1$text[15]<-"OFF"
+updatDat1$Scores<-as.numeric(updatDat1$Scores)
+length(unique(updatDat1$ID))
+## drop all the scores with non On medication and retain only on medication scores(filter stage 2)
+## 17MR is dropped because it does not have on medication socres
+updatDat_on <-updatDat1[updatDat1$text =="ON",]
+updatDat_on$text <-NULL
+
+## data split by diagnosis((PD and LBD),(PSP,MSA)) and save it to updatDat1
+updatDat_1<-updatDat_on
+dat_PL<-updatDat_on[updatDat_on$Dx %in% c("PD","LBD"),]
+dat_PM_cleaned <-updatDat_on[updatDat_on$Dx %in% c("PSP","MSA"),]
+```
+
+### subset(PD and LBD) manipulation
+```{r time, eval=FALSE, include=FALSE}
+dat_PL_cleaned <-
+  dat_PL %>%  aggregate(by = list(dat_PL$ID, dat_PL$Sex, dat_PL$Dx, dat_PL$Distance),drop=TRUE, mean)
+dat_PL_cleaned<-subset(dat_PL_cleaned,select=-c(4,5,7,10))
+dat_PL_cleaned<-dat_PL_cleaned[order(dat_PL_cleaned$Group.1,dat_PL_cleaned$Distance),]
+names(dat_PL_cleaned)[1]<-"ID"
+names(dat_PL_cleaned)[2]<-"Sex"
+names(dat_PL_cleaned)[3]<-"Dx"
+
+
+## Important Variables derivation
+### Post diagnosis distance in time 
+dat_PL_cleaned$Distance1 <-dat_PL_cleaned$Time.to.first.UPDRS.III + dat_PL_cleaned$Distance
+### Age at visit
+dat_PL_cleaned$Age.at.visit<-dat_PL_cleaned$Age.at.Dx+dat_PL_cleaned$Distance1
+### Year at visit
+dat_PL_cleaned$Year.at.visit<-as.numeric(dat_PL_cleaned$Year.of.Birth)+dat_PL_cleaned$Age.at.visit
+### Time t0 death
+dat_PL_cleaned$Time.to.death<-dat_PL_cleaned$Year.at.visit-dat_PL_cleaned$Year.death
+### reset visitTimes
+names<-unique(dat_PL_cleaned$ID)
+dat_PL_cleaned$visitTimes<-0
+for(i in names){
+  for(j in 1:length(dat_PL_cleaned[dat_PL_cleaned$ID==i,"ID"])){
+    dat_PL_cleaned[dat_PL_cleaned$ID==i,]$visitTimes[j]<-j
+  }
+}
+```
+
+#### filter the patients(PD and LBD,stage2)
+In filter stage2, we disregard the patients with illogical time to death and those whose clinical observations were not available in their last two years of post diagnosis life
+```{r}
+## clean for PD and LBD
+### 7HS and 137MH both have postive time from death, which is medically illogical(dropped)
+#dat_PL_cleaned<-dat_PL_cleaned[(dat_PL_cleaned$ID!="7HS")&(dat_PL_cleaned$ID!="137MH"),]
+dat_PL_cleaned<-dat_PL_cleaned[dat_PL_cleaned$ID!="137MH",]
+
+## Pnames is the set of patients with positive Time.to.death
+Pnames<-unique(dat_PL_cleaned[dat_PL_cleaned$Time.to.death>0,]$ID)
+
+## Adjustment for positive time.to.death
+options(scipen = 999)
+for(id in Pnames){
+  dat_PL_cleaned[dat_PL_cleaned$ID==id,]$Time.to.death<-dat_PL_cleaned[dat_PL_cleaned$ID==id,]$Time.to.death-max(dat_PL_cleaned[dat_PL_cleaned$ID==id,]$Time.to.death)
+}
+
+## pl_un is a set of patients 
+pl_un<-c()
+ID <- unique(dat_PL_cleaned$ID)
+for(id in ID){
+  sub<-dat_PL_cleaned[dat_PL_cleaned$ID==id,]
+  if(max(sub$Time.to.death)<=0&max(sub$Time.to.death)>= -2){
+    pl_un<-c(pl_un,id)
+  }
+}
+
+dat_PL_cleaned_2<-dat_PL_cleaned[dat_PL_cleaned$ID%in%pl_un,]
+
+length(pl_un)
+```
+
+
+#### filter the patients(PD and LBD,stage3)
+filter the patients who had at least 5 post diagnosis observations
+```{r time, eval=FALSE, include=FALSE}
+## filter the patients who had at least 5 post diagnosis observations
+uni_Id<-unique(dat_PL_cleaned_2$ID)
+IDRS<-c()
+for(i in uni_Id){
+  if(length(unique(dat_PL_cleaned_2[dat_PL_cleaned_2$ID==i,]$Distance))>=5){
+    IDRS<-c(IDRS,i)
+    
+  }}
+length(IDRS)
+dat_PL_cleaned_3<-dat_PL_cleaned_2[dat_PL_cleaned_2$ID%in%IDRS,]
+#save(update_new,file = "update_new.Rda")
+#load(file = "update_new.Rda")
+length(unique(dat_PL_cleaned_3$ID))
+
+```
+
+### subset(MSA and PSP) manipulation
+#### filter the patients(PSP and MSA,stage2)
+filter the patients who had observations in their last two years of life
+```{r}
+# data manipulation for MSA&PSP
+dat_PM_cleaned<-dat_PM
+dat_PM_cleaned$Distance1<-as.numeric(dat_PM_cleaned$Distance)+as.numeric(dat_PM_cleaned$Time.to.first.UPDRS.III)
+length(unique(dat_PM_cleaned$ID))
+# distance ajustment
+for(i in 1:length(dat_PM_cleaned$ID) ){
+  if(i>=4){
+   C1<-dat_PM_cleaned$ID[i]==dat_PM_cleaned$ID[i-1]&dat_PM_cleaned$Distance1[i]==dat_PM_cleaned$Distance1[i-1]
+   C2<-dat_PM_cleaned$ID[i-1]==dat_PM_cleaned$ID[i-2]&dat_PM_cleaned$Distance1[i-1]==dat_PM_cleaned$Distance1[i-2]
+   C3<-dat_PM_cleaned$ID[i-2]==dat_PM_cleaned$ID[i-3]&dat_PM_cleaned$Distance1[i-2]==dat_PM_cleaned$Distance1[i-3]
+   if(C1&C2&C3){
+     dat_PM_cleaned$Distance1[i-2]<-as.numeric(dat_PM_cleaned$Distance1[i-2])+0.25
+     dat_PM_cleaned$Distance1[i-1]<-as.numeric(dat_PM_cleaned$Distance1[i-1])+0.5
+     dat_PM_cleaned$Distance1[i]<-as.numeric(dat_PM_cleaned$Distance1[i])+0.75
+     }else if(C2&C3){
+     dat_PM_cleaned$Distance1[i-2]<-as.numeric(dat_PM_cleaned$Distance1[i-2])+0.33333333
+     dat_PM_cleaned$Distance1[i-1]<-as.numeric(dat_PM_cleaned$Distance1[i-1])+0.66666666
+     }else if(C3){
+      
+     dat_PM_cleaned$Distance1[i-2]<-as.numeric(dat_PM_cleaned$Distance1[i-2])+1/2
+     }
+ }
+   
+  }
+
+dat_PM_cleaned$Age.at.visit<-dat_PM_cleaned$Age.at.Dx+dat_PM_cleaned$Distance1
+dat_PM_cleaned$Year.at.visit<-dat_PM_cleaned$Year.of.Birth+dat_PM_cleaned$Age.at.visit
+dat_PM_cleaned$Time.to.death<-dat_PM_cleaned$Year.at.visit-dat_PM_cleaned$Year.death
+
+## cleaned total MP dataset
+dat_PM_cleaned[dat_PM_cleaned$ID=="21ES",]$Time.to.death<-dat_PM_cleaned[dat_PM_cleaned$ID=="21ES",]$Time.to.death-max(dat_PM_cleaned[dat_PM_cleaned$ID=="21ES",]$Time.to.death)
+dat_PM_cleaned[dat_PM_cleaned$ID=="42BM",]$Time.to.death<-dat_PM_cleaned[dat_PM_cleaned$ID=="42BM",]$Time.to.death-	max(dat_PM_cleaned[dat_PM_cleaned$ID=="42BM",]$Time.to.death)
+
+#save(datMP,file = "datMP.Rda")
+#load(file = "datMP.Rda")
+
+## pm_un is a set of patients who had observations in their last two years 
+pm_un<-c()
+ID <- unique(dat_PM_cleaned$ID)
+for(id in ID){
+  sub<-dat_PM_cleaned[dat_PM_cleaned$ID==id,]
+  if(max(sub$Time.to.death)<=0&max(sub$Time.to.death)>= -2){
+    pm_un<-c(pm_un,id)
+  }
+}
+
+### reset visitTimes
+names<-unique(dat_PM_cleaned$ID)
+dat_PM_cleaned$visitTimes<-0
+for(i in names){
+  for(j in 1:length(dat_PM_cleaned[dat_PM_cleaned$ID==i,"ID"])){
+    dat_PM_cleaned[dat_PM_cleaned$ID==i,]$visitTimes[j]<-j
+  }
+}
+
+
+dat_PM_cleaned_2<-dat_PM_cleaned[dat_PM_cleaned$ID%in%pm_un,]
+```
+
+#### filter the patients(PSP and MSA,stage3)
+filter the patients who had at least 5 observations
+```{r}
+MPname<-c()
+for(i in unique(dat_PM_cleaned_2$ID)){
+  if(length(unique(dat_PM_cleaned_2[dat_PM_cleaned_2$ID==i,]$Distance1))>=5){
+    MPname<-c(MPname,i)
+    
+  }}
+
+dat_PM_cleaned_3<-dat_PM_cleaned_2[dat_PM_cleaned_2$ID%in%MPname,]
+```
+
+# save important data sets
+```{r}
+dat_PL_cleaned_2$group<-"PL"
+dat_PM_cleaned_2$group<-"PM"
+
+dat_PL_cleaned_3$group<-"PL"
+dat_PM_cleaned_3$group<-"PM"
+
+full_data<-updatDat1
+analysis_data1<-rbind(dat_PL_cleaned_2,dat_PM_cleaned_2)
+analysis_data2<-rbind(dat_PL_cleaned_3,dat_PM_cleaned_3)
+
+
+save(full_data,file = "new data/full_data.Rda")
+save(analysis_data1,file = "new data/analysis_data1.Rda")
+save(analysis_data2,file = "new data/analysis_data2.Rda")
+
+dat_PD_cleaned<-dat_PL_cleaned[dat_PL_cleaned$Dx=="PD",]
+save(dat_PD_cleaned,file = "new data/dat_PD_cleaned.Rda")
+```
+
+
+

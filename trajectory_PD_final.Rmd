@@ -1,0 +1,1539 @@
+---
+title: "Trajectory_plotting_PD"
+author: "Xilai Fu"
+date: "9/18/2020"
+output: html_document
+---
+```{r,warning=FALSE, message=FALSE}
+# Packages -----
+library(stringr)
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lattice)
+library(magrittr)
+library(miscTools)
+library(tidyverse)
+library(plyr)
+library(splines)
+library(MASS)
+library(lspline)
+library(ggrepel)
+library(gridExtra)
+library(ggpubr)
+library(cowplot)
+```
+setwd("R:/soph/EPI/Yan's group/xilai/UPDRS_Final/data_reload")
+## functions
+```{r}
+## Age category change
+col_change<-function(x) if(x== "[27,50)"){x = "a"}else if(x =="[50,65)"){x = "b"}else{x = "c"}
+
+## Extract > = 50 in formal representation
+greatequal65<-stringi::stri_replace_all_fixed(
+  c(">= 65"), 
+  c(">="), 
+  c("\u2265"), 
+  vectorize_all = F
+)
+```
+
+
+## load data
+```{r}
+load(file = "full_data_PD.Rda")
+load(file = "analysis_data1_PD.Rda")
+load(file = "analysis_data2_PD.Rda")
+load(file = "dat_PD_cleaned.Rda")
+
+full_data<-full_data_PD
+analysis_data1<-analysis_data1_PD
+analysis_data2<-analysis_data2_PD
+dataup_on_1<-dat_PD_cleaned
+```
+
+## data manipulation and additional variables derivation
+```{r}
+dataup_on_1$Age.at.Diagnosis<-cut(dataup_on_1$Age.at.Dx,c(27,50,65,95),right = FALSE)
+dataup_on_1$ajusted_age <-sapply(dataup_on_1$Age.at.Diagnosis,col_change)
+MyPalette<-c("a"= "#FC4E07","b"="#E7B800","c"="#00AFBB")
+```
+
+# Overall UPDRSIII trajectories
+## Time from death
+```{r fig.width= 10,fig.height= 4.38,warning=FALSE}
+# Scatter plot(Diagnosed Diseases,separate)
+## By Age.at.Diagnosis
+o12 <- ggplot(data = dataup_on_1,
+              mapping = aes(x = Time.to.death,
+                            y = Scores,
+                            color = ajusted_age)) +
+  geom_smooth(method = "loess", se = F) +
+  labs(x = "\nTime prior to death(years) \n (B)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD,n = 202)") + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(-18, 0), breaks = seq(-18, 0, 1)) +
+  scale_y_continuous(
+    limits = c(0, 75),
+    breaks = seq(0, 75, 5),
+    position = "right"
+  ) +
+  geom_segment(
+    y = 10,
+    yend = 55,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -16,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  
+  theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(linetype = guide_legend(reverse = TRUE)) +
+  coord_cartesian(ylim = c(10, 55), xlim = c(-16, 0))
+```
+
+
+## Time from onset
+```{r fig.width= 10,fig.height= 4.38,warning=FALSE}
+## By Age.at.Diagnosis [25,65) ; [65,75) ;[75,95) ;
+o11 <- ggplot(
+  data = dataup_on_1 ,
+  mapping = aes(x = Distance1,
+                y = Scores,
+                color = ajusted_age)
+) +
+  geom_smooth(method = "loess", se = F) +
+  geom_segment(
+    y = 10,
+    yend = 55,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 30,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  scale_x_continuous(limits = c(0, 35), breaks = seq(0, 35, 2)) +
+  labs(x = "\nPost diagnosis time(years) \n (A)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD,n=202)") +
+  scale_y_continuous(limits = c(0, 75),
+                     breaks = seq(0, 75, 5))+scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) +
+  coord_cartesian(ylim = c(10, 55), xlim = c(0, 29))
+
+
+overall_pros <-plot_grid(o11,o12)
+overall_pros
+```
+
+# Low variance
+```{r fig.width= 10,fig.height= 4.38,warning=FALSE}
+## Extracting the patients whose trajectories are characterized as low variance
+datPL_clean<-dataup_on_1
+stable<-c("26SG","219PF","143MS","203MZ")
+stable1<-datPL_clean[datPL_clean$ID%in%stable,]
+stable1$Age.at.Dx<-as.character(stable1$Age.at.Dx)
+
+## prospective
+l1<-ggplot(
+  data = stable1,
+  mapping = aes(
+    x = Distance1,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  geom_smooth(method = "lm", se = F) +
+  labs(x = "\nPost diagnosis time(years) \n (A)",y = "Scores(UPDRSIII)\n", color ="Age at Diagnosis (PD, n=4)")+
+  geom_segment(
+    y = 5,
+    yend = 35,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 13,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  scale_x_continuous(
+    limits = c(0, 16),
+    breaks = seq(0,16,1)
+  ) +
+  scale_y_continuous(
+    limits = c(0, 40),
+    breaks = seq(0,40,5)
+  ) + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65))+ theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1))+
+  coord_cartesian(ylim = c(5, 35), xlim = c(0, 13))
+
+
+## retrospective
+l2 <- ggplot(
+  data = stable1 ,
+  mapping = aes(
+    x = Time.to.death,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  geom_smooth(method = "lm", se = F) +
+  scale_x_continuous(limits = c(-12, 0), breaks = seq(-12, 0, 1))+
+  geom_segment(
+    y = 5,
+    yend = 35,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -10,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nTime prior to death(years) \n (B)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD, n=4)") +
+  scale_y_continuous(
+    limits = c(0, 40),
+    breaks = seq(0, 40, 5),
+    position = "right"
+  ) + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) + theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1)) +
+  scale_linetype_manual(values = c("dashed", "solid")) +
+  coord_cartesian(ylim = c(5, 35), xlim = c(-10, 0))
+
+low_vari <-plot_grid(l1,l2)
+low_vari
+```
+
+
+# one knot
+## Increase->decrease
+```{r}
+update_new_On<-dataup_on_1
+
+## Extracting the patients whose trajectories are characterized as increase->decrease
+increase_decrease_name<-c("144LS","52DL","156EF","110LG")
+update_new_On_increase_decrease<-update_new_On[update_new_On$ID%in%increase_decrease_name,]
+increase_decrease_order<-unique(update_new_On_increase_decrease[with(update_new_On_increase_decrease, order(Age.at.Dx)),]$ID)
+update_new_On_increase_decrease<-update_new_On[update_new_On$ID%in%increase_decrease_order,]
+
+
+## increase->decrease(Time from onset)
+p11 <-
+  ggplot(data = update_new_On_increase_decrease,
+         mapping = aes(x = Distance1, y = Scores, color = ajusted_age)) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "144LS", ],
+    formula = y ~ lspline(x, c(16.333333)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "52DL", ],
+    formula = y ~ lspline(x, c(5.3)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "156EF", ],
+    formula = y ~ lspline(x, c(7.3)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "110LG", ],
+    formula = y ~ lspline(x, c(10)),
+    se = F
+  ) +geom_segment(
+    y = 0,
+    yend = 60,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 26,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nPost diagnosis time(years) \n (A)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD, n=4)") + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(0, 30),
+                     breaks = seq(0, 30, 2)) +
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5)) + theme(
+                       legend.title = element_text(size = 12.8),
+                       legend.text = element_text(size = 12.8),
+                       legend.justification = c(0, 1),
+                       legend.direction = "horizontal",
+                       legend.position = c(0.018, 0.998),
+                       legend.key = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank(),
+                       axis.line = element_blank(),
+                       axis.ticks.length = unit(.18, "cm"),
+                       axis.text.x = element_text(size = 12.8, face = "plain"),
+                       axis.text.y = element_text(size = 12.8, face = "plain"),
+                       axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1))  +
+  coord_cartesian(ylim = c(0, 60), xlim = c(0, 26))
+
+
+## increase->decrease(Time from death)
+p12 <- ggplot(
+  data = update_new_On_increase_decrease,
+  mapping = aes(
+    x = Time.to.death,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+)  +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "144LS",],
+    formula = y ~ lspline(x, c(-1.66667)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "52DL",],
+    formula = y ~ lspline(x, c(-4.7)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "156EF",],
+    formula = y ~ lspline(x, c(-3.7)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_increase_decrease[update_new_On_increase_decrease$ID == "110LG",],
+    formula = y ~ lspline(x, c(-3)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -22,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nTime prior to death(years) \n (A)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD, n=4)")+ 
+  scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65))+
+  scale_x_continuous(limits = c(-22, 0), breaks = seq(-22, 0,2)) +
+  scale_y_continuous(
+    limits = c(0, 65),
+    breaks = seq(0, 65, 5),
+    position = "right"
+  ) + theme(
+    legend.title = element_text(size = 12.8),
+                       legend.text = element_text(size = 12.8),
+                       legend.justification = c(0, 1),
+                       legend.direction = "horizontal",
+                       legend.position = c(0.018, 0.998),
+                       legend.key = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank(),
+                       axis.line = element_blank(),
+                       axis.ticks.length = unit(.18, "cm"),
+                       axis.text.x = element_text(size = 12.8, face = "plain"),
+                       axis.text.y = element_text(size = 12.8, face = "plain"),
+                       axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+```
+
+## Flat->increase
+```{r}
+## Extracting the patients whose trajectories are characterized as Flat->increase
+Flat_increase_name<-c("6GT","13MQ","179EH","186WD","205JW","16ER","93EP")
+update_new_On_Flat_increase<-update_new_On[update_new_On$ID %in% Flat_increase_name,]
+Flat_increase_order<-unique(update_new_On_Flat_increase[with(update_new_On_Flat_increase, order(Age.at.Dx)),]$ID)
+update_new_On_Flat_increase<-update_new_On[update_new_On$ID %in% Flat_increase_order,]
+
+
+## Flat->increase(Time from onset)
+p21 <- ggplot(
+  data = update_new_On_Flat_increase,
+  mapping = aes(
+    x = Distance1 ,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "6GT", ],
+    formula = y ~ lspline(x, c(7)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "13MQ", ],
+    formula = y ~ lspline(x, c(19)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "179EH", ],
+    formula = y ~ lspline(x, c(5)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "186WD", ],
+    formula = y ~ lspline(x, c(25)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "205JW", ],
+    formula = y ~ lspline(x, c(12.83333)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "16ER", ],
+    formula = y ~ lspline(x, c(3.333333)),
+    se = F
+  ) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "93EP", ],
+    formula = y ~ lspline(x, c(9)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 26,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nPost diagnosis time(years) \n (B)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD, n=7)") + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(0, 30),
+                     breaks = seq(0, 30, 2)) +
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5)) + theme(
+                       legend.title = element_text(size = 12.8),
+                       legend.text = element_text(size = 12.8),
+                       legend.justification = c(0, 1),
+                       legend.direction = "horizontal",
+                       legend.position = c(0.018, 0.998),
+                       legend.key = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank(),
+                       axis.line = element_blank(),
+                       axis.ticks.length = unit(.18, "cm"),
+                       axis.text.x = element_text(size = 12.8, face = "plain"),
+                       axis.text.y = element_text(size = 12.8, face = "plain"),
+                       axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60), xlim = c(0, 26))
+
+
+## Flat->increase(Time from death)
+p22 <- ggplot(
+  data = update_new_On_Flat_increase,
+  mapping = aes(
+    x = Time.to.death ,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "6GT",],
+    formula = y ~ lspline(x, c(-5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "13MQ",],
+    formula = y ~ lspline(x, c(-4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "179EH",],
+    formula = y ~ lspline(x, c(-3)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "186WD",],
+    formula = y ~ lspline(x, c(-2)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "205JW",],
+    formula = y ~ lspline(x, c(-2.1666667)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "16ER",],
+    formula = y ~ lspline(x, c(-1.66667)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Flat_increase[update_new_On_Flat_increase$ID == "93EP",],
+    formula = y ~ lspline(x, c(-4)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -22,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  
+  labs(x = "\nTime prior to death(years) \n (B)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD, n=7)") + scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(-22, 0),
+                     breaks = seq(-22, 0, 2)) +
+  scale_y_continuous(
+    limits = c(0, 65),
+    breaks = seq(0, 65, 5),
+    position = "right"
+  )  + theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.direction = "horizontal",
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+```
+
+## Decrease->increase
+```{r}
+## Extracting the patients whose trajectories are characterized as Decrease->increase
+Decrease_increase_name<-c("66EL","72EO","82EF","136BM","84MT","131TB","171JW","105DG","194PK")
+update_new_On_Decrease_increase<-update_new_On[update_new_On$ID %in% Decrease_increase_name,]
+Decrease_increase_order<-unique(update_new_On_Decrease_increase[with(update_new_On_Decrease_increase, order(Age.at.Dx)),]$ID)
+update_new_On_Decrease_increase<-update_new_On[update_new_On$ID %in% Decrease_increase_order,]
+
+
+## decrease->increase(Time from onset)
+p31 <- ggplot(
+  data = update_new_On_Decrease_increase,
+  mapping = aes(
+    x = Distance1,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "194PK", ],
+    formula = y ~ lspline(x, c(3)),
+    se = F
+  ) +
+  
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID ==
+                                             "66EL", ],
+    formula = y ~ lspline(x, c(2)),
+    se = F
+  ) +
+  
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "72EO", ],
+    formula = y ~ lspline(x, c(4)),
+    se = F
+  ) +
+  
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "82EF", ],
+    formula = y ~ lspline(x, c(4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "136BM", ],
+    formula = y ~ lspline(x, c(21.5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "84MT", ],
+    formula = y ~ lspline(x, c(12)),
+    se = F
+  ) +
+  
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "131TB", ],
+    formula = y ~ lspline(x, c(9)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "171JW", ],
+    formula = y ~ lspline(x, c(8)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "105DG", ],
+    formula = y ~ lspline(x, c(7)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 26,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  
+  labs(x = "\nPost diagnosis time(years) \n (C)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD, n=9)") +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(0, 30),
+                     breaks = seq(0, 30, 2)) +
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5)) + theme(
+                       legend.title = element_text(size = 12.8),
+                       legend.text = element_text(size = 12.8),
+                       legend.justification = c(0, 1),
+                       legend.direction = "horizontal",
+                       legend.position = c(0.018, 0.998),
+                       legend.key = element_blank(),
+                       panel.grid.major = element_blank(),
+                       panel.grid.minor = element_blank(),
+                       panel.background = element_blank(),
+                       axis.line = element_blank(),
+                       axis.ticks.length = unit(.18, "cm"),
+                       axis.text.x = element_text(size = 12.8, face = "plain"),
+                       axis.text.y = element_text(size = 12.8, face = "plain"),
+                       axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60), xlim = c(0, 26))
+
+# decrease->increase(Time from death)
+p32 <-
+  ggplot(
+    data = update_new_On_Decrease_increase,
+    mapping = aes(
+      x = Time.to.death,
+      y = Scores,
+      group = ID,
+      color = ajusted_age
+    )
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "194PK",],
+    formula = y ~ lspline(x, c(-3)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "66EL",],
+    formula = y ~ lspline(x, c(-12)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "72EO",],
+    formula = y ~ lspline(x, c(-3)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "82EF",],
+    formula = y ~ lspline(x, c(-5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "136BM",],
+    formula = y ~ lspline(x, c(-2.5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "84MT",],
+    formula = y ~ lspline(x, c(-7)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "131TB",],
+    formula = y ~ lspline(x, c(-4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "171JW",],
+    formula = y ~ lspline(x, c(-3)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_Decrease_increase[update_new_On_Decrease_increase$ID == "105DG",],
+    formula = y ~ lspline(x, c(-6)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -22,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  
+  labs(x = "\nTime prior to death(years) \n (C)", y = "Scores(UPDRSIII)\n", color =
+         "Age at Diagnosis (PD, n=9)") +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(-22, 0), breaks = seq(-22, 0, 2)) +
+  scale_y_continuous(
+    limits = c(0, 65),
+    breaks = seq(0, 65, 5),
+    position = "right"
+  ) + theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.direction = "horizontal",
+    legend.position = c(0.018, 0.998),
+    legend.key = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+```
+
+### graphs merge for one knot
+```{r fig.width= 12.8,fig.height= 9.88,warning=FALSE}
+## one knot trajectoires from time of onset
+figure_one_from_onset <-plot_grid(p11,p21,p31)
+figure_one_from_onset
+
+## one knot trajectoires from time of death
+figure_one_from_death <- plot_grid(p12,p22,p32)
+figure_one_from_death
+```
+
+
+# two knots(retrospective)
+## Increase-decrease-increase
+```{r}
+## Increase-decrease-increase subset
+Increase_decrease_increase_name<-c("20MS","76HF","79FF","157DD","168RW","130RC","94AP")
+
+update_new_On$ajusted_age<-factor(update_new_On$ajusted_age)
+
+update_new_On_IDI<-update_new_On[update_new_On$ID%in%Increase_decrease_increase_name,]
+
+
+f11 <- ggplot(
+  data = update_new_On_IDI,
+  mapping = aes(
+    x = Distance1,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+    )
+) +
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "20MS",],
+    formula = y ~ lspline(x, c(10, 14)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "76HF",],
+    formula = y ~ lspline(x, c(23, 25)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "79FF",],
+    formula = y ~ lspline(x, c(3, 4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "157DD",],
+    formula = y ~ lspline(x, c(12, 13)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "168RW",],
+    formula = y ~ lspline(x, c(10, 13)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "130RC",],
+    formula = y ~ lspline(x, c(12, 13)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "94AP",],
+    formula = y ~ lspline(x, c(7, 9)),
+    se = F
+) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 36,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) + labs(x = "\nPost diagnosis time(years) \n (A)",y ="Scores(UPDRSIII)\n",color ="Age at Diagnosis (PD, n=7)")+
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(0, 36),
+                     breaks = seq(0, 36, 2)) +
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5)) + theme(
+                       legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.488, 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+
+
+## Increase-decrease-increase(retrospective)
+f12 <- ggplot(
+  data = update_new_On_IDI,
+  mapping = aes(
+    x = Time.to.death,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+)  +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "20MS",],
+    formula = y ~ lspline(x, c(-11,-7)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "76HF",],
+    formula = y ~ lspline(x, c(-7,-5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "79FF",],
+    formula = y ~ lspline(x, c(-7,-6)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "157DD",],
+    formula = y ~ lspline(x, c(-5,-4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "168RW",],
+    formula = y ~ lspline(x, c(-7,-4)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "130RC",],
+    formula = y ~ lspline(x, c(-6,-5)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_IDI[update_new_On_IDI$ID == "94AP",],
+    formula = y ~ lspline(x, c(-8,-6)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -16,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nTime prior to death(years) \n (A)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD, n=7)") +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65))+
+  scale_x_continuous(limits = c(-16, 0), breaks = seq(-16, 0, 1))+
+  scale_y_continuous(
+    limits = c(0, 65),
+    breaks = seq(0, 65, 5),
+    position = "right"
+  ) + theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.018, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+```
+
+## Decrease->increase->decrease
+```{r}
+## Decrease->increase->decrease
+Decrease_increase_decrease_name<-c("22PH","120LW","175HL")
+update_new_On_DID<-update_new_On[update_new_On$ID%in%Decrease_increase_decrease_name,]
+
+
+## Decrease->increase->decrease(prospective)
+f21 <- ggplot(
+  data = update_new_On_DID,
+  mapping = aes(
+    x = Distance1,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "22PH", ],
+    formula = y ~ lspline(x, c(6, 14)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "120LW", ],
+    formula = y ~ lspline(x, c(17, 20)),
+    se = F
+  ) +
+  
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "175HL", ],
+    formula = y ~ lspline(x, c(3.75, 6.75)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 36,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  labs(x = "\nPost diagnosis time(years) \n (B)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD, n=3)") +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(0, 36),
+                     breaks = seq(0, 36, 2)) +
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5)) + theme(
+                       legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.488, 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+
+
+
+
+
+## Decrease->increase->decrease(retrospective)
+f22<-ggplot(
+  data = update_new_On_DID,
+  mapping = aes(
+    x = Time.to.death,
+    y = Scores,
+    group = ID,
+    color = ajusted_age
+  )
+)  +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "22PH", ],
+    formula = y ~ lspline(x, c(-10, -2)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "120LW", ],
+    formula = y ~ lspline(x, c(-5, -2)),
+    se = F
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    data = update_new_On_DID[update_new_On_DID$ID == "175HL", ],
+    formula = y ~ lspline(x, c(-4.25, -1.25)),
+    se = F
+  ) + geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -16,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+
+  labs(x = "\nTime prior to death(years) \n (B)", y = "Scores(UPDRSIII)\n",color="Age at Diagnosis (PD, n=3)")  +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  scale_x_continuous(limits = c(-16, 0), breaks = seq(-16, 0, 1))+
+  scale_y_continuous(limits = c(0, 65),
+                     breaks = seq(0, 65, 5),position = "right") + theme(
+                       legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.018, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+                     ) + guides(color = guide_legend(order = 1)) +
+  coord_cartesian(ylim = c(0, 60))
+```
+
+
+#### graphs merge two knots
+```{r fig.width= 12.8,fig.height= 5.88,warning=FALSE}
+## two knots trajectoires from time of onset
+figure_two_from_onset <-plot_grid(f11,f21)
+figure_two_from_onset
+
+## two knots trajectoires from time of death
+figure_two_from_death <- plot_grid(f12, f22)
+figure_two_from_death
+```
+
+
+## Linear
+```{r}
+linear_name<-c("112GR","24EH","30MD","4FZ","50RH","59HP","67AL","86WG","117GT","121FF","146JVK","147RR","172VS","190KJ","191JH","217WH","101HP","103LC","122MP","140MC","56HT","88LO","129RE","166SS","189EC","201GT","213DR","222LB","160JH","102JB")
+
+update_new_On_linear<-update_new_On[update_new_On$ID%in%linear_name,]
+```
+
+## Irregular patients
+### subset of patients with irregular clinical movements
+```{r}
+stable_name<-c("26SG","219PF","143MS","203MZ")
+
+
+## one knot
+increase_decrease_name<-c("144LS","52DL","156EF","110LG")
+flat_increase_name<-c("6GT","13MQ","179EH","186WD","205JW","16ER","93EP")
+decrease_increase_name<-c("66EL","72EO","82EF","136BM","84MT","131TB","171JW","105DG","194PK")
+
+# two knots
+increase_decrease_increase_name<-c("20MS","76HF","79FF","157DD","168RW","130RC","94AP")
+decrease_increase_decrease_name<-c("22PH","120LW","175HL")
+
+
+all_modeled<-c(linear_name,stable_name,increase_decrease_name,Flat_increase_name,Decrease_increase_name,increase_decrease_increase_name,decrease_increase_decrease_name)
+
+## data of patients with irregular trajectories
+dat_irre<- analysis_data2[!(analysis_data2$ID%in% all_modeled),]
+
+## derive ajusted_age
+dat_irre$Age.at.Diagnosis<-cut(dat_irre$Age.at.Dx,c(27,50,65,95),right = FALSE)
+dat_irre$ajusted_age <-sapply(dat_irre$Age.at.Diagnosis,col_change)
+
+df_1 <- dat_irre %>% distinct(ID, .keep_all = TRUE)
+table(df_1$ajusted_age)
+
+## Divide the data by sex and then do split
+PD_yon<-dat_irre[dat_irre$ajusted_age=="b",]
+PD_old<-dat_irre[dat_irre$ajusted_age=="c",]
+```
+
+## irregular movements(Post diagnosis time)
+```{r}
+p1 <- ggplot(data = PD_yon, aes(
+  x = Distance1,
+  y = Scores,
+  group = ID,
+  color = ajusted_age
+)) +
+  geom_line() +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 22,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) + geom_segment(
+    y = 0,
+    yend = 75,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  )+ 
+  labs(x = "\nPost diagnosis time(years) \n (A)", y = "Scores(UPDRSIII)\n", color = "Age at Diagnosis (PD,n=12)") +
+  scale_x_continuous(limits = c(0, 26),
+                     breaks = seq(0, 26, 2)) +
+  scale_y_continuous(limits = c(0, 75),
+                     breaks = seq(0, 75, 5)) +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) +
+  theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.03, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) +
+  coord_cartesian(xlim = c(0, 22))
+```
+
+
+```{r}
+p2 <- ggplot(data = PD_old, aes(
+  x = Distance1,
+  y = Scores,
+  group = ID,
+  color = ajusted_age
+)) +
+  geom_line() + geom_segment(
+    y = 0,
+    yend = 75,
+    x = -Inf,
+    xend = -Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = 0,
+    xend = 22,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  labs(x = "\nPost diagnosis time(years) \n (B)",y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD,n=9)")+
+  scale_x_continuous(limits = c(0, 26),
+                     breaks = seq(0, 26, 2)) +
+  scale_y_continuous(limits = c(0, 75),
+                     breaks = seq(0, 75, 5)) +
+  scale_colour_manual(values = MyPalette,
+                      labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65))+theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.03, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1))+
+  coord_cartesian(xlim=c(0,22))
+```
+
+```{r}
+irre_pros<-plot_grid(p1, p2, p3, p4)
+```
+
+
+
+## irregular movements(Time from death)
+### Young patients
+```{r}
+p1<-ggplot(data = PD_yon,
+           aes(
+             x = Time.to.death,
+             y = Scores,
+             group = ID,
+             color = ajusted_age
+           )) +
+  geom_line() +geom_segment(
+    y = 0,
+    yend = 75,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -22,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  scale_x_continuous(limits = c(-22, 0),
+                     breaks = seq(-22, 0, 2)) +
+  labs(x = "\nTime prior to death(years) \n (A)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD,n=12)")+
+  scale_y_continuous(limits = c(0, 75),
+                     breaks = seq(0, 75, 5),position = "right")+ scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)) + theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.018, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1))
+```
+
+### Old patients
+```{r fig.width= 10.8,fig.height= 4.88,warning=FALSE}
+p2 <- ggplot(data = PD_old,
+           aes(
+             x = Time.to.death,
+             y = Scores,
+             group = ID,
+             color = ajusted_age
+           )) +
+  geom_line() + geom_segment(
+    y = 0,
+    yend = 75,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -22,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  scale_x_continuous(
+                     limits = c(-22, 0),
+                     breaks = seq(-22, 0, 2)) +
+  labs(x = "\nTime prior to death(years) \n (B)", y = "Scores(UPDRSIII)\n",color = "Age at Diagnosis (PD,n=9)")+
+  scale_y_continuous(limits = c(0, 75),
+                     breaks = seq(0, 75, 5),position = "right")+ scale_colour_manual(values = MyPalette,labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65))+ theme(
+    legend.title = element_text(size = 12.8),
+    legend.text = element_text(size = 12.8),
+    legend.justification = c(0, 1),
+    legend.key = element_blank(),
+    legend.position = c(0.018, 0.998),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    axis.line = element_blank(),
+    axis.ticks.length = unit(.18, "cm"),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain")
+  ) + guides(color = guide_legend(order = 1))
+
+
+
+irre_pros<-plot_grid(p1, p2)
+irre_pros
+```
+

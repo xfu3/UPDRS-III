@@ -1,0 +1,925 @@
+---
+title: "UPDRS Project"
+author: "Xilai Fu"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output:
+  html_document:
+    number_sections: true
+    css: style.css
+    code_folding: hide
+    toc: true
+    toc_float:
+      collapsed: true 
+      smooth_scroll: true
+---
+```{r}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r setup, include=FALSE}
+# Packages -----
+library(stringr)
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(lattice)
+library(magrittr)
+library(miscTools)
+library(tidyverse)
+library(plyr)
+library(splines)
+library(MASS)
+library(lspline)
+library(ggrepel)
+library(stargazer)
+library(boot)
+library(table1)
+library(kableExtra)
+library(arsenal)
+library(magrittr)
+```
+
+
+```{r}
+load(file = "full_data.Rda")
+load(file = "analysis_data1.Rda")
+load(file = "analysis_data2.Rda")
+```
+
+# Table1.1 Descriptive statistics of full data and analysis I analysis II data.
+## Descriptive statistics of full data
+```{r}
+#full_data
+#analysis_data1
+#analysis_data2
+full_data_table<-full_data[,c(1,3,4,6,7)]
+full_data_wide<-unique(full_data_table)
+full_data_wide$`Number of Visits`<- sapply(full_data_wide$ID,function(x){nrow(full_data[full_data$ID==x,])})
+
+## Sex
+full_data_wide$Sex<-sapply(full_data_wide$Sex,function(x){if(x == "M"){x<-"Male"}else{x<-"Female"}})
+
+## Diagnosis
+full_data_wide$Dx<-sapply(full_data_wide$Dx,function(x){if(x == "PD"){x<-"Parkindon's Disease"}else if(x == "LBD"){x<-"Lewy body dementia"}else if(x == "MSA"){x<-"Multiple system atrophy"}else{x<-"Progressive supranuclear palsy"}})
+
+## Age cut and additon of corrsponding column
+full_data_wide$`Age at Diagnosis`<-cut(full_data_wide$Age.at.Dx,c(27,50,65,90),right = TRUE)
+age_class <-levels(full_data_wide$`Age at Diagnosis`)
+full_data_wide$`Age at Diagnosis`<-sapply(full_data_wide$`Age at Diagnosis`,function(x){if(x == age_class[1]){x <- "<=50"}else if(x == age_class[2]){x<-"50-<=65"}else{x<-">65"}})
+
+
+## Time.from..diagnosis.to.first.UPDRSIII cut and addition of corresponding column
+full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-cut(full_data_wide$Time.to.first.UPDRS.III,c(-1,0.0000001,1,5,10,15,100),right = TRUE)
+gap_class <-levels(full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`)
+
+full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-sapply(full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,function(x){if(x == gap_class[1]){x <- "0"}else if(x == gap_class[2]){x<-"0-<=1"}else if(x == gap_class[3]){x<-"1-<=5"}else if(x == gap_class[4]){x<-"5-<=10"}else if(x == gap_class[5]){x<-"10-<=15"}else{x<-">15"}})
+
+
+## Number of visits and addition of corresponding column
+full_data_wide$`Number of Visits_1`<-cut(full_data_wide$`Number of Visits`,c(0,5,10,15,100),right = FALSE)
+
+visit_class<-levels(full_data_wide$`Number of Visits_1`)
+full_data_wide$`Number of Visits_1`<-sapply(full_data_wide$`Number of Visits_1`,function(x){if(x == visit_class[1]){x <- "<5"}else if(x == visit_class[2]){x<-"5-<10"}else if(x == visit_class[3]){x<-"10-<15"}else{x<-">=15"}})
+
+
+## reorder levels of categorical levels
+### Sex
+full_data_wide$Sex<-factor(full_data_wide$Sex,levels = c("Male","Female"))
+### Dignosis
+full_data_wide$Dx<-factor(full_data_wide$Dx,levels = c("Parkindon's Disease","Lewy body dementia","Multiple system atrophy","Progressive supranuclear palsy"))
+### Age at Diagnosis
+full_data_wide$`Age at Diagnosis`<- factor(full_data_wide$`Age at Diagnosis`,levels = c("<=50","50-<=65",">65"))
+### Time from diagnosis to first UPDRSIII
+full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-factor(full_data_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,levels = c("0","0-<=1","1-<=5","5-<=10","10-<=15",">15"))
+### Number of visits
+full_data_wide$`Number of Visits_1`<- factor(full_data_wide$`Number of Visits_1`,levels = c("<5","5-<10","10-<15",">=15"))
+
+### label and units
+label(full_data_wide$Dx)<-"Diagnosis"
+```
+
+## Descriptive statistics of analysis data I
+```{r}
+analysis_data1_table<-analysis_data1[,c(1,2,3,5,7)]
+analysis_data1_wide<-unique(analysis_data1_table)
+
+analysis_data1_wide$`Number of Visits`<- sapply(analysis_data1_wide$ID,function(x){nrow(full_data[full_data$ID==x,])})
+
+## Sex
+analysis_data1_wide$Sex<-sapply(analysis_data1_wide$Sex,function(x){if(x == "M"){x<-"Male"}else{x<-"Female"}})
+
+## Diagnosis
+analysis_data1_wide$Dx<-sapply(analysis_data1_wide$Dx,function(x){if(x == "PD"){x<-"Parkindon's Disease"}else if(x == "LBD"){x<-"Lewy body dementia"}else if(x == "MSA"){x<-"Multiple system atrophy"}else{x<-"Progressive supranuclear palsy"}})
+
+## Age cut and additon of corrsponding column
+analysis_data1_wide$`Age at Diagnosis`<-cut(analysis_data1_wide$Age.at.Dx,c(27,50,65,90),right = TRUE)
+age_class <-levels(analysis_data1_wide$`Age at Diagnosis`)
+analysis_data1_wide$`Age at Diagnosis`<-sapply(analysis_data1_wide$`Age at Diagnosis`,function(x){if(x == age_class[1]){x <- "<=50"}else if(x == age_class[2]){x<-"50-<=65"}else{x<-">65"}})
+
+
+## Time.from..diagnosis.to.first.UPDRSIII cut and addition of corresponding column
+analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-cut(analysis_data1_wide$Time.to.first.UPDRS.III,c(-1,0.0000001,1,5,10,15,100),right = TRUE)
+gap_class <-levels(analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`)
+
+analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-sapply(analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,function(x){if(x == gap_class[1]){x <- "0"}else if(x == gap_class[2]){x<-"0-<=1"}else if(x == gap_class[3]){x<-"1-<=5"}else if(x == gap_class[4]){x<-"5-<=10"}else if(x == gap_class[5]){x<-"10-<=15"}else{x<-">15"}})
+
+
+## Number of visits and addition of corresponding column
+analysis_data1_wide$`Number of Visits_1`<-cut(analysis_data1_wide$`Number of Visits`,c(0,5,10,15,100),right = FALSE)
+
+visit_class<-levels(analysis_data1_wide$`Number of Visits_1`)
+analysis_data1_wide$`Number of Visits_1`<-sapply(analysis_data1_wide$`Number of Visits_1`,function(x){if(x == visit_class[1]){x <- "<5"}else if(x == visit_class[2]){x<-"5-<10"}else if(x == visit_class[3]){x<-"10-<15"}else{x<-">=15"}})
+
+
+## reorder levels of categorical levels
+### Sex
+analysis_data1_wide$Sex<-factor(analysis_data1_wide$Sex,levels = c("Male","Female"))
+### Dignosis
+analysis_data1_wide$Dx<-factor(analysis_data1_wide$Dx,levels = c("Parkindon's Disease","Lewy body dementia","Multiple system atrophy","Progressive supranuclear palsy"))
+### Age at Diagnosis
+analysis_data1_wide$`Age at Diagnosis`<- factor(analysis_data1_wide$`Age at Diagnosis`,levels = c("<=50","50-<=65",">65"))
+### Time from diagnosis to first UPDRSIII
+analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-factor(analysis_data1_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,levels = c("0","0-<=1","1-<=5","5-<=10","10-<=15",">15"))
+### Number of visits
+analysis_data1_wide$`Number of Visits_1`<- factor(analysis_data1_wide$`Number of Visits_1`,levels = c("<5","5-<10","10-<15",">=15"))
+
+### label and units
+label(analysis_data1_wide$Dx)<-"Diagnosis"
+```
+
+## Descriptive statistics of analysis data II
+```{r}
+analysis_data2_table<-analysis_data2[,c(1,2,3,5,7)]
+analysis_data2_wide<-unique(analysis_data2_table)
+
+analysis_data2_wide$`Number of Visits`<- sapply(analysis_data2_wide$ID,function(x){nrow(full_data[full_data$ID==x,])})
+
+## Sex
+analysis_data2_wide$Sex<-sapply(analysis_data2_wide$Sex,function(x){if(x == "M"){x<-"Male"}else{x<-"Female"}})
+
+## Diagnosis
+analysis_data2_wide$Dx<-sapply(analysis_data2_wide$Dx,function(x){if(x == "PD"){x<-"Parkindon's Disease"}else if(x == "LBD"){x<-"Lewy body dementia"}else if(x == "MSA"){x<-"Multiple system atrophy"}else{x<-"Progressive supranuclear palsy"}})
+
+## Age cut and additon of corrsponding column
+analysis_data2_wide$`Age at Diagnosis`<-cut(analysis_data2_wide$Age.at.Dx,c(27,50,65,90),right = TRUE)
+age_class <-levels(analysis_data2_wide$`Age at Diagnosis`)
+analysis_data2_wide$`Age at Diagnosis`<-sapply(analysis_data2_wide$`Age at Diagnosis`,function(x){if(x == age_class[1]){x <- "<=50"}else if(x == age_class[2]){x<-"50-<=65"}else{x<-">65"}})
+
+
+## Time.from..diagnosis.to.first.UPDRSIII cut and addition of corresponding column
+analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-cut(analysis_data2_wide$Time.to.first.UPDRS.III,c(-1,0.0000001,1,5,10,15,100),right = TRUE)
+gap_class <-levels(analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`)
+
+analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-sapply(analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,function(x){if(x == gap_class[1]){x <- "0"}else if(x == gap_class[2]){x<-"0-<=1"}else if(x == gap_class[3]){x<-"1-<=5"}else if(x == gap_class[4]){x<-"5-<=10"}else if(x == gap_class[5]){x<-"10-<=15"}else{x<-">15"}})
+
+
+## Number of visits and addition of corresponding column
+analysis_data2_wide$`Number of Visits_1`<-cut(analysis_data2_wide$`Number of Visits`,c(0,5,10,15,100),right = FALSE)
+
+visit_class<-levels(analysis_data2_wide$`Number of Visits_1`)
+analysis_data2_wide$`Number of Visits_1`<-sapply(analysis_data2_wide$`Number of Visits_1`,function(x){if(x == visit_class[1]){x <- "<5"}else if(x == visit_class[2]){x<-"5-<10"}else if(x == visit_class[3]){x<-"10-<15"}else{x<-">=15"}})
+
+
+## reorder levels of categorical levels
+### Sex
+analysis_data2_wide$Sex<-factor(analysis_data2_wide$Sex,levels = c("Male","Female"))
+### Dignosis
+analysis_data2_wide$Dx<-factor(analysis_data2_wide$Dx,levels = c("Parkindon's Disease","Lewy body dementia","Multiple system atrophy","Progressive supranuclear palsy"))
+### Age at Diagnosis
+analysis_data2_wide$`Age at Diagnosis`<- factor(analysis_data2_wide$`Age at Diagnosis`,levels = c("<=50","50-<=65",">65"))
+### Time from diagnosis to first UPDRSIII
+analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`<-factor(analysis_data2_wide$`Time from diagnosis to first UPDRS-III assessment(years)`,levels = c("0","0-<=1","1-<=5","5-<=10","10-<=15",">15"))
+### Number of visits
+analysis_data2_wide$`Number of Visits_1`<- factor(analysis_data2_wide$`Number of Visits_1`,levels = c("<5","5-<10","10-<15",">=15"))
+
+### label and units
+label(analysis_data2_wide$Dx)<-"Diagnosis"
+```
+
+
+## full data table
+```{r}
+table1(~ Sex + `Time from diagnosis to first UPDRS-III assessment(years)`+`Age at Diagnosis` + `Number of Visits_1`,caption = "Table1.1 Descriptive statistics of full data",data=full_data_wide)
+full_data_wide<-full_data_wide[!(full_data_wide$ID %in% c("17MR","137MH")),]
+```
+
+## analysis data I table
+```{r}
+table1(~ Sex + Dx + `Time from diagnosis to first UPDRS-III assessment(years)`+`Age at Diagnosis` + `Number of Visits_1`,caption = "Table1.1 Descriptive statistics of analysis data1",data=analysis_data1_wide)
+```
+
+## analysis data II table
+```{r}
+table1(~ Sex + Dx + `Time from diagnosis to first UPDRS-III assessment(years)`+`Age at Diagnosis` + `Number of Visits_1`,caption = "Table1.1 Descriptive statistics of analysis data2",data=analysis_data2_wide)
+```
+
+
+## Maximum clinical table
+```{r}
+## get the mode of a vector
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+full_data_wide <- full_data_wide[full_data_wide$Dx=="Parkindon's Disease",]
+## get the maximum number of annual visits for patients
+full_names<-unique(full_data_wide$ID)
+max_visits <- sapply(full_names, function(id) {
+  mod <- getmode(full_data[full_data$ID == id, ]$Distance)
+  max_num <-
+    length(full_data[(full_data$ID == id) &
+                       (full_data$Distance == mod), ]$ID)
+  
+  })
+
+## combine ID and max visits
+dat_max<-data.frame("ID"=full_names,"Max visits" = max_visits)
+dat_Dx<-full_data_wide[,c(4)]
+merge<-cbind(dat_max,dat_Dx)
+
+max_visits<-as.factor(max_visits)
+table1(~ dat_Dx|max_visits,caption = "Table1.2 Maximum clinical visits in a year in the full data",data=merge)
+```
+
+## Time interval from last visit to date of death in the full data
+```{r}
+full_data$last_visit_death
+full_data_single<-subset(full_data,select = c(1:8))
+full_data_single$max_dis <-
+  sapply(full_data_single$ID, function(id) {
+    max(full_data_single[full_data_single$ID == id, ]$Distance)
+  })
+
+full_data_max_dis<-unique(subset(full_data_single,select = -c(8)))
+
+full_data_max_dis$death_gap <-
+  full_data_max_dis$ID %>% sapply(function(id) {
+    full_data_max_dis[full_data_max_dis$ID == id, ]$Year.death -          full_data_max_dis[full_data_max_dis$ID ==
+                                                                                              id, ]$Year.of.Birth - full_data_max_dis[full_data_max_dis$ID == id, ]$Time.to.first.UPDRS.III -
+      full_data_max_dis[full_data_max_dis$ID == id, ]$max_dis - full_data_max_dis[full_data_max_dis$ID == id, ]$Age.at.Dx
+    
+  })
+
+## derive the year of last visit to death
+full_data_max_dis$death_gap<-full_data_max_dis$death_gap %>% sapply(function(x){
+  if((x>=-1)&(x<0)){
+    return(0)
+  }else{
+    return(x)
+  }
+})
+
+## categorize the year of last visit to death
+full_data_max_dis$death_gap_range<-full_data_max_dis$death_gap %>% sapply(function(x){
+  if(x<0){
+    return("Positive/illogical")
+  }else if((x>=0)&(x<=1)){
+    return("Within the last year")    
+  }else if((x>1)&(x<=2)){
+    return("Within the second last year")
+  }else{
+    return("More than 2 years")
+  }
+})
+
+full_data_max_dis$death_gap_range<-factor(full_data_max_dis$death_gap_range,c("Within the last year","Within the second last year","More than 2 years","Positive/illogical"))
+
+table1(~ death_gap_range,caption = "Time interval from last visit to date of death in the full data",data=full_data_max_dis)
+```
+
+## Distribution of age from diagnosis in the full data
+```{r}
+dis1 <-as.numeric(full_data_max_dis$max_dis)+full_data_max_dis$Time.to.first.UPDRS.III
+full_data_max_dis$age_from_death<-dis1 %>% sapply(function(x){
+  if(x>=5){
+    return(">=5 years")
+  }else{
+    return("<5 years")
+  }
+})
+
+table1(~ age_from_death,caption = "Distribution of age from diagnosis in the full data",data=full_data_max_dis)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Statistics of modelling (PD)
+## linear trajectory
+```{r}
+linear_name<-c("112GR","24EH","30MD","4FZ","50RH","59HP","67AL","86WG","117GT","121FF","146JVK","147RR","172VS","190KJ","191JH","217WH","101HP","103LC","122MP","140MC","56HT","88LO","129RE","166SS","189EC","213DR","222LB","102JB")
+
+linear<-analysis_data2_PD[analysis_data2_PD$ID%in%linear_name,]
+
+## unique row of each patient
+linear_un <-unique(linear[,c(1,2,4,5)])
+
+## unique names of PD patients in the linear group 
+PD_linear_na<-unique(linear$ID)
+
+## derive standard deviation
+linear_un$sd <- sapply(PD_linear_na, function(id) {
+  return(sd(linear[linear$ID == id, "Scores"]))
+})
+
+## derive R2
+linear_un$R2 <- sapply(PD_linear_na, function(id) {
+  f1<-lm(Scores ~ Distance1, data=linear[linear$ID== id,])
+  r2<-summary(f1)$r.squared
+  return(r2)
+})
+
+## derive slope
+linear_un$slope <- sapply(PD_linear_na, function(id) {
+  f1<-lm(Scores ~ Distance1, data=linear[linear$ID== id,])
+  slope<-summary(f1)$coefficient[2,1]
+  return(slope)
+})
+
+# Discriptive statistics of linear group
+kable(summary(linear_un[,c("Age.at.Dx","sd","R2","slope")]))
+non_linear[16]
+
+non_linear[39]
+
+non_linear[42]
+
+
+non_linear <- unique(analysis_data2[!(analysis_data2$ID %in% c(linear_name,stable_name)),]$ID)
+r2<-sapply(non_linear, function(id) {
+  f1<-lm(Scores ~ Distance1, data=analysis_data2[analysis_data2$ID== id,])
+  r2<-summary(f1)$r.squared
+  return(r2)
+})
+```
+
+
+
+## low variance trajectory
+Since the observed standard deviation of 201GT is very low, we decided to move it to low variance group temporarily.
+```{r}
+stable_name<-c("26SG","219PF","143MS","203MZ","201GT")
+stable <- analysis_data2_PD[analysis_data2_PD$ID %in% stable_name,]
+
+## unique row of each patient
+stable_un <-unique(stable[,c(1,2,4,5)])
+
+## unique names of PD patients in the linear group 
+PD_stable_na<-unique(stable_un$ID)
+
+## derive standard deviation
+stable_un$sd <- sapply(PD_stable_na, function(id) {
+  return(sd(stable[stable$ID == id, "Scores"]))
+})
+
+## summary statistics of standard deviation and Age.at.Dx in low variance group
+summary(stable_un)
+
+```
+
+
+## one knot
+```{r}
+## one knot
+### increase-decrease
+increase_decrease_name<-c("144LS","52DL","156EF","110LG")
+increase_decrease_knot<-c(16.333333,5.3,7.3,10)
+increase_decrease_type<-rep("increase_decrease",4)
+
+increase_decrease_age.dx <- sapply(increase_decrease_name, function(x) {
+  return(analysis_data2_wide[analysis_data2_wide$ID == x, ]$Age.at.Dx)
+})
+
+dat_ID <-
+  data.frame(
+    "ID" = increase_decrease_name,
+    "Age_at_Dx" = increase_decrease_age.dx,
+    "knot_1" = increase_decrease_knot,
+    "trajectory_type" = increase_decrease_type
+  )
+
+### flat-increase
+flat_increase_name<-c("6GT","13MQ","179EH","186WD","205JW","16ER","93EP")
+flat_increase_knot<-c(7,19,5,25,12.83333,3.333333,9)
+flat_increase_type<-rep("flat_increase",7)
+flat_increase_age.dx <- sapply(flat_increase_name, function(x) {
+  return(analysis_data2_wide[analysis_data2_wide$ID == x, ]$Age.at.Dx)
+})
+
+dat_FI<-data.frame("ID" = flat_increase_name,"Age_at_Dx"=flat_increase_age.dx,"knot_1" = flat_increase_knot,"trajectory_type" =flat_increase_type)
+
+### decrease-increase
+decrease_increase_name<-c("66EL","72EO","82EF","136BM","84MT","131TB","171JW","105DG","194PK")
+decrease_increase_knot<-c(2,4,4,21.5,12,9,8,7,3)
+decrease_increase_type<-rep("decrease_increase",9)
+decrease_increase_age.dx <- sapply(decrease_increase_name, function(x) {
+  return(analysis_data2_wide[analysis_data2_wide$ID == x, ]$Age.at.Dx)
+})
+
+dat_DI <-
+  data.frame(
+    "ID" = decrease_increase_name,
+    "Age_at_Dx" = decrease_increase_age.dx,
+    "knot_1" = decrease_increase_knot,
+    "trajectory_type" = decrease_increase_type
+  )
+
+## cobine the dat of piecewise(one knot) trajectories
+dat_one<-rbind(dat_ID,dat_FI,dat_DI)
+dat_one$ID<-factor(dat_one$ID,levels = levels(analysis_data2_PD$ID))
+
+## derive standard deviation
+dat_one$sd <-
+  sapply(dat_one$ID, function(id) {
+    
+    sd <- sd(analysis_data2_PD[analysis_data2_PD$ID == id,"Scores"])
+    return(sd)
+    
+    
+  })
+
+## derive R2
+dat_one$R2 <-
+  sapply(dat_one$ID, function(id) {
+    knot<-dat_one[dat_one$ID==id,]$knot_1
+    sub<- analysis_data2_PD[analysis_data2_PD$ID == id,]
+    
+    f1 <- lm(Scores ~ lspline(Distance1, c(knot), marginal = TRUE),data = sub)
+    
+    r2 <- summary(f1)$r.squared
+    return(r2)
+    
+    
+  })
+
+## derive the slope of the first segament
+dat_one$slope_1 <-
+  sapply(dat_one$ID, function(id) {
+    knot<-dat_one[dat_one$ID==id,]$knot_1
+    sub<- analysis_data2_PD[analysis_data2_PD$ID == id,]
+    
+    f1 <- lm(Scores ~ lspline(Distance1, c(knot), marginal = TRUE),data = sub)
+
+    slo1 <- summary(f1)$coefficients[2, 1]
+   
+    return(slo1)
+    
+    
+  })
+
+## derive the slope of the second segament
+dat_one$slope_2 <-
+  sapply(dat_one$ID, function(id) {
+    knot<-dat_one[dat_one$ID==id,]$knot_1
+    sub<- analysis_data2_PD[analysis_data2_PD$ID == id,]
+    
+    f1 <- lm(Scores ~ lspline(Distance1, c(knot), marginal = TRUE),data = sub)
+    
+    slo2 <- summary(f1)$coefficients[3, 1]
+    
+    return(slo2)
+    
+    
+  })
+
+
+dat_one$knot1_significance <- sapply(dat_one$ID, function(id) {
+  f0 <-
+    lm(Scores ~ Distance1, data = analysis_data2[analysis_data2$ID == id,])
+  f1 <-
+    lm(Scores ~ lspline(Distance1, c(dat_one[dat_one$ID == id,]$knot_1), marginal =
+                          TRUE), data = analysis_data2[analysis_data2$ID == id,])
+  
+  return(anova(f0, f1)[6][2, 1])
+})
+  
+
+
+
+## summary of Age.at.Dx,knot,sd,R2,slope1 and slope2 by trajectory type
+stby(dat_one[,c(2:3,5:8)], dat_one$trajectory_type, descr, stats = "fivenum") %>%
+  tb(order = 3)
+
+
+### stable portion of flat_increase
+FI <-dat_one[dat_one$trajectory_type=="flat_increase",]
+
+FI_ID<- FI$ID
+
+flat_portion<-sapply(FI_ID,function(id){
+  knot<-FI[FI$ID==id,]$knot_1
+  dat_point<-analysis_data2_PD[(analysis_data2_PD$ID==id)&(analysis_data2_PD$Distance1<=knot),]$Scores
+  return(sd(dat_point))
+})
+
+
+## summary
+summary(flat_portion)
+```
+### p_value graph 
+```{r}
+## pvalue assignment and cut for dat_one
+dat_one$significance<- cut(dat_one$knot1_significance,c(0,0.05,0.12),right = FALSE)
+dat_one$significance_text<-sapply(dat_one$significance,function(x){
+  if(x == "[0,0.05)"){
+    return("significant")
+  }else{
+    return("not significant")
+  } 
+})
+
+## pvalue assignment and cut for dat_two
+dat_two$significance<- cut(dat_two$knot12_significance,c(0,0.05,0.5),right = FALSE)
+dat_two$significance_text<-sapply(dat_two$significance,function(x){
+  if(x == "[0,0.05)"){
+    return("significant")
+  }else{
+    return("not significant")
+  } 
+})
+
+## R_squa
+linear_un$R2_significance<- cut(linear_un$R2,c(0,0.7,1),right = FALSE)
+
+
+## export data
+
+write.csv(linear_un,file = "new data/linear.csv")
+write.csv(dat_one,file = "new data/dat_one.csv")
+write.csv(dat_two,file = "new data/dat_two.csv")
+```
+
+
+### one knot model comparison
+```{r}
+f0 <- lm(Scores ~ Distance1, data=analysis_data2[analysis_data2$ID ==dat_one$ID[7], ])
+
+f1 <- lm(Scores ~ lspline(Distance1, c(dat_one$knot_1[7]), marginal=TRUE), data=analysis_data2[analysis_data2$ID ==dat_one$ID[7], ])
+
+
+anova(f0,f1)[6][2,1]
+```
+
+
+## two knots
+```{r}
+# two knots
+## increase_decrease_increase
+increase_decrease_increase_name <- c("20MS","76HF","79FF","157DD","168RW","130RC","94AP")
+increase_decrease_increase_knot1 <-c(10,23,3,12,10,12,7)
+increase_decrease_increase_knot2 <-c(14,25,4,13,13,13,9)
+increase_decrease_increase_type<-rep("increase_decrease_increase",7)
+increase_decrease_increase_age.dx <-
+  sapply(increase_decrease_increase_name, function(x) { 
+    return(analysis_data2_wide[analysis_data2_wide$ID == x,]$Age.at.Dx)
+  })
+
+
+### subset_IDI 
+dat_IDI <-
+  data.frame(
+    "ID" = increase_decrease_increase_name,
+    "Age_at_Dx" = increase_decrease_increase_age.dx,
+    "knot_1" = increase_decrease_increase_knot1,
+    "knot_2" = increase_decrease_increase_knot2,
+    "trajectory_type" = increase_decrease_increase_type
+  )
+
+
+## decrease_increase_decrease
+decrease_increase_decrease_name <- c("22PH","120LW","175HL")
+decrease_increase_decrease_knot1 <-c(6,17,3.75)
+decrease_increase_decrease_knot2 <-c(14,20,6.75)
+decrease_increase_decrease_type<-rep("decrease_increase_decrease",3)
+decrease_increase_decrease_age.dx <-
+  sapply(decrease_increase_decrease_name, function(x) { 
+    return(analysis_data2_wide[analysis_data2_wide$ID == x,]$Age.at.Dx)
+  })
+
+
+### subset_DID 
+dat_DID <-
+  data.frame(
+    "ID" = decrease_increase_decrease_name,
+    "Age_at_Dx" = decrease_increase_decrease_age.dx,
+    "knot_1" = decrease_increase_decrease_knot1,
+    "knot_2" = decrease_increase_decrease_knot2,
+    "trajectory_type" = decrease_increase_decrease_type
+  )
+
+dat_two<-rbind(dat_IDI,dat_DID)
+
+dat_two$ID<-factor(dat_two$ID,levels = levels(analysis_data2_PD$ID))
+
+dat_two$sd <-
+  sapply(dat_two$ID, function(id) {
+    sd <- sd(analysis_data2_PD[analysis_data2_PD$ID == id,"Scores"])
+    
+    return(sd)
+    
+    
+  })
+
+## derive R2
+dat_two$R2 <-
+  sapply(dat_two$ID, function(id) {
+    knot_1 <- dat_two[dat_two$ID == id, ]$knot_1
+    knot_2 <- dat_two[dat_two$ID == id, ]$knot_2
+    sub <- analysis_data2_PD[analysis_data2_PD$ID ==id,]
+    
+    f1 <-
+      lm(Scores ~ lspline(Distance1, c(knot_1,knot_2), marginal = TRUE), data = sub)
+    
+    r2 <- summary(f1)$r.squared
+    return(r2)
+    
+    
+  })
+
+## derive the slope of the first segament
+dat_two$slope_1 <-
+  sapply(dat_two$ID, function(id) {
+    knot_1 <- dat_two[dat_two$ID == id, ]$knot_1
+    knot_2 <- dat_two[dat_two$ID == id, ]$knot_2
+    sub <- analysis_data2_PD[analysis_data2_PD$ID ==id,]
+    
+    f1 <-
+      lm(Scores ~ lspline(Distance1, c(knot_1,knot_2), marginal = TRUE), data = sub)
+
+    slo1 <- summary(f1)$coefficients[2, 1]
+   
+    return(slo1)
+    
+    
+  })
+
+
+## derive the slope of the second segament
+dat_two$slope_2 <-
+  sapply(dat_two$ID, function(id) {
+    knot_1 <- dat_two[dat_two$ID == id, ]$knot_1
+    knot_2 <- dat_two[dat_two$ID == id, ]$knot_2
+    sub <- analysis_data2_PD[analysis_data2_PD$ID ==id,]
+    
+    f1 <-
+      lm(Scores ~ lspline(Distance1, c(knot_1,knot_2), marginal = TRUE), data = sub)
+
+    slo2 <- summary(f1)$coefficients[3, 1]
+   
+    return(slo2)
+    
+    
+  })
+
+
+
+## derive the slope of the third segament
+dat_two$slope_3 <-
+  sapply(dat_two$ID, function(id) {
+    knot_1 <- dat_two[dat_two$ID == id, ]$knot_1
+    knot_2 <- dat_two[dat_two$ID == id, ]$knot_2
+    sub <- analysis_data2_PD[analysis_data2_PD$ID ==id,]
+    
+    f1 <-
+      lm(Scores ~ lspline(Distance1, c(knot_1,knot_2), marginal = TRUE), data = sub)
+    
+    slo3 <- summary(f1)$coefficients[4, 1]
+    
+    return(slo3)
+    
+    
+  })
+
+dat_two$knot12_significance <- sapply(dat_two$ID, function(id) {
+  f0 <-
+    lm(Scores ~ Distance1, data = analysis_data2[analysis_data2$ID == id,])
+  
+  f1 <-
+    lm(Scores ~ lspline(Distance1, c(dat_two[dat_two$ID == id,]$knot_1,dat_two[dat_two$ID == id,]$knot_2), marginal =TRUE), data = analysis_data2[analysis_data2$ID == id,])
+  
+  return(anova(f0, f1)[6][2, 1])
+})
+
+
+## summary of Age.at.Dx,knot,sd,R2,slope1 and slope2 by trajectory type
+stby(dat_two[,c(2:4,6:10)], dat_two$trajectory_type, descr, stats = "fivenum") %>%
+  tb(order = 3)
+```
+
+## irregular/undetermined
+```{r}
+all_fitted_name <- c(linear_name,stable_name,increase_decrease_name,flat_increase_name,decrease_increase_name,increase_decrease_increase_name,decrease_increase_decrease_name)
+
+## data of patients with irregular trajectories
+dat_irre<- analysis_data2_PD[!(analysis_data2_PD$ID%in% all_modeled),]
+
+irr_ID<-unique(dat_irre$ID)
+irre_sd<-sapply(irr_ID, function(id) {
+    sd <- sd(analysis_data2_PD[analysis_data2_PD$ID == id,"Scores"])
+    
+    return(sd)
+    })
+
+irre_age.dx <-
+  sapply(irr_ID, function(x) { 
+    return(analysis_data2_wide[analysis_data2_wide$ID == x,]$Age.at.Dx)
+  })
+
+dat_irre <-
+  data.frame("ID" = irr_ID,
+             "Age_at_Dx" = irre_age.dx,
+             "trajectory_type" = "irregular")
+
+summary(irre_age.dx)
+summary(irre_sd)
+```
+
+## trajectory groups by sex 
+```{r}
+linear_un$trajectory_type<-"linear"
+stable_un$trajectory_type<-"low variance"
+
+## collective data of 0 knot
+dat_0 <- rbind(linear_un[,c(1,2,4,8)],stable_un[,c(1,2,4,6)])
+
+## collective data of knot(s)
+dat_knot<-rbind(dat_one[,c(1,2,4)],dat_two[,c(1,2,5)])
+
+## data of irregular trajectories
+dat_irre
+
+
+## add age.at.Dx for dat_knot and dat_irre
+dat_age <- rbind(dat_knot,dat_irre)
+
+dat_age$Sex <- sapply(dat_age$ID,function(id){
+  return(analysis_data2_wide[analysis_data2_wide$ID==id,]$Sex)
+})
+
+## total data
+colnames(dat_0)[3] <-"Age_at_Dx"
+dat_total <-rbind(dat_0,dat_age)
+
+
+
+## Age cut
+dat_total$Age_cut<-cut(dat_total$Age_at_Dx,c(27,50,65,90),right = TRUE)
+age_class <-levels(dat_total$Age_cut)
+
+lesequa50<-stringi::stri_replace_all_fixed(
+  c("<= 50"), 
+  c("<="), 
+  c("\u2264"), 
+  vectorize_all = F
+)
+
+lesequa65<-stringi::stri_replace_all_fixed(
+  c("50 -<= 65"), 
+  c("<="), 
+  c("\u2264"), 
+  vectorize_all = F
+)
+
+dat_total$Age_category<-sapply(dat_total$Age_cut,function(x){if(x == age_class[1]){x <- lesequa50}else if(x == age_class[2]){x<-lesequa65}else{x<-"> 65"}})
+
+dat_total$Sex<-as.character(dat_total$Sex)
+
+## Sex adjustment
+for(id in dat_total$ID) {
+  if (dat_total[dat_total$ID == id, ]$Sex == "M") {
+    dat_total[dat_total$ID == id, ]$Sex <- "Male"
+  } else if (dat_total[dat_total$ID == id, ]$Sex == "F") {
+     dat_total[dat_total$ID == id, ]$Sex <- "Female"
+  }
+}
+dat_total$Sex<-as.factor(dat_total$Sex)
+
+## adjust trajectory_type
+dat_total$trajectory_type<- as.factor(dat_total$trajectory_type)
+
+## adjust trajectory_type
+dat_total$trajectory_type<-factor(dat_total$trajectory_type,levels = c("linear","low variance","increase_decrease","flat_increase","decrease_increase","increase_decrease_increase","decrease_increase_decrease","irregular"))
+
+## adjust sex
+dat_total$Sex<-factor(dat_total$Sex,levels=c("Male","Female"))
+
+table1(~ trajectory_type|Sex,caption = "Table5.1 Trajectory groups by sex",data=dat_total)
+
+```
+## trajectory groups by age group
+```{r}
+table1(~ trajectory_type|Age_category,caption = "Table5.2 Trajectory groups by age group",data=dat_total)
+
+```
+## trajectory groups by age at diagnosis
+```{r}
+table1(~ Age_at_Dx|trajectory_type,caption = "Table5.2 Trajectory groups by age at diagnosis",data=dat_total)
+
+stby(dat_total[,c(3,4)], dat_total$trajectory_type, descr, stats = "fivenum") %>%
+  tb(order = 3)
+```

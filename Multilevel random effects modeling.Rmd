@@ -1,0 +1,202 @@
+---
+title: "Modelling"
+author: "Xilai Fu"
+date: "12/19/2020"
+output: html_document
+---
+
+```{r}
+library(nlme)
+library(ggplot2)
+library(nlme)
+```
+
+```{r}
+load(file = "update_new_On_linear.Rda")
+```
+
+Our objective is to model the patients in linear group with linear regresson model and multilevel random effects model to best represent each the age group.
+
+
+# Linear regression model (retrospective)
+In this part, I will test the effect of Age group,Sex and their corresponding interaction terms with time.
+Models are compared by anova test
+```{r fig.width= 10,fig.height= 4.38,warning=FALSE}
+## change reference categories of ajusted age and Sex
+update_new_On_linear$ajusted_age <-factor(update_new_On_linear$ajusted_age,levels = c("c","a","b"))
+
+levels(update_new_On_linear$Sex) <- c("M","F")  
+
+model1 <- lm(Scores ~ Time.to.death, data = update_new_On_linear)
+summary(model1)
+
+model2 <- lm(Scores ~ Time.to.death+ajusted_age, data = update_new_On_linear)
+summary(model2)
+
+model3 <- lm(Scores ~ Time.to.death+ ajusted_age*Time.to.death+Sex*Time.to.death, data = update_new_On_linear)
+summary(model3)
+
+# test the effect of ajusted_age
+anova(model1,model2,test = "Chisq")
+
+# test the effect of interactions of time*sex and time*agegroup
+anova(model2,model3,test = "Chisq")
+```
+
+# Multilevel random effects model (retrospective)
+We are going to add a random intercept on ID to see if the model will be improved. multilevel random effects Models will be compared by likelihood ratio test.
+```{r fig.width= 10,fig.height= 4.38}
+mixed.lmer_1 <- lme(Scores ~ Time.to.death+ajusted_age, data = update_new_On_linear,method = 'ML',random=~1|ID)
+summary(mixed.lmer_1)
+
+anova(mixed.lmer_1,model2) # compared the model of mixed.lmer_1 and mode20 with likelihood ratio test
+
+mixed.lmer_2 <- lme(Scores ~ Time.to.death+ajusted_age +Time.to.death:ajusted_age, data = update_new_On_linear,method = 'ML',random=~1|ID)
+summary(mixed.lmer_2)
+
+anova(mixed.lmer_1,mixed.lmer_2) # test the effect of Time*ajusted_age
+
+mixed.lmer_2 <- lme(Scores ~ Time.to.death + Sex*Time.to.death, data = update_new_On_linear,method = 'ML',random=~1|ID)
+summary(mixed.lmer_2) # test the effect of sex and its interaction term with time
+
+mixed.lmer_3 <- lme(Scores ~ Time.to.death + ajusted_age +Time.to.death:ajusted_age, data = update_new_On_linear,method = 'ML',random=~1|ID)
+summary(mixed.lmer_3)
+anova(mixed.lmer_1,mixed.lmer_3) # test the effect of ajusted_age*time
+```
+
+# Model diagnostics
+We are going to check the residual plots of the optimal linear model and multilevel random effect model.
+```{r fig.width= 10,fig.height= 4.38}
+## mixed.lmer_3
+par(mfrow = c(1,2))
+
+plot(mixed.lmer_3$fitted[,2],residuals(mixed.lmer_3),xlim=c(0,60),ylim = c(-15,15),frame = FALSE,xlab = "Fitted values",ylab = "Residuals")
+abline(h = 0,col = "red")
+
+qqnorm(resid(mixed.lmer_3), pch = 1, frame = FALSE,main = "")
+qqline(resid(mixed.lmer_3), col = "red", lwd = 2)
+
+
+
+## Model1.3
+par(mfrow = c(1,2))
+
+plot(model3$fitted,residuals(model3),xlim=c(0,60),ylim = c(-30,30),frame = FALSE,xlab = "Fitted values",ylab = "Residuals")
+abline(h = 0,col = "red")
+
+qqnorm(resid(model3), pch = 1, frame = FALSE,main = "",ylim = c(-30,30))
+qqline(resid(model3), col = "red", lwd = 2)
+```
+
+# Secondary modeling
+## Since the two age groups <50 and 50 - 64 are close in slope in the final model, we decided to have them assigned the same interaction term in a new model.
+```{r}
+## combine the categorical levels <50 and 50 - 64 for interaction term.
+update_new_On_linear$age_indicator <- sapply(update_new_On_linear$ajusted_age,function(x){
+  if(x %in% c("a","b")){
+    return(1)
+  }else{
+    return(0)
+  }
+})
+
+mixed.lmer <- lme(Scores ~ Time.to.death + ajusted_age +Time.to.death:age_indicator, data = update_new_On_linear,method = 'ML',random=~1|ID)
+
+summary(mixed.lmer)
+update_new_On_linear$age_indicator <- as.factor(update_new_On_linear$age_indicator)
+levels(update_new_On_linear$age_indicator)
+
+anova(mixed.lmer_1,mixed.lmer) ## likelihood ratio test comparing the new interaction term age_indicator.time 
+```
+
+
+
+# Modelling from time of death
+Visualization of multilevel random effects model with its fixed effects.
+```{r}
+## Extract the time range for each age group
+range(update_new_On_linear[update_new_On_linear$ajusted_age == "a","Time.to.death"])
+range(update_new_On_linear[update_new_On_linear$ajusted_age == "b","Time.to.death"])
+range(update_new_On_linear[update_new_On_linear$ajusted_age == "c","Time.to.death"])
+
+## Extract the coefficients of the fixed effect
+intercept <- coef(summary(mixed.lmer))[1,1]
+Time <- coef(summary(mixed.lmer))[2,1] 
+Agegroup1 <- coef(summary(mixed.lmer))[3,1] 
+Agegroup2 <- coef(summary(mixed.lmer))[4,1] 
+interact <- coef(summary(mixed.lmer))[5,1]
+
+## Construct the equations with the associated coefficients obtained from our final model for each age group
+
+# >= 65
+equation1=function(x){Time*x+intercept}
+# < 50
+equation2=function(x){(Time+interact)*x+intercept+Agegroup1}
+# 50 - 64
+equation3=function(x){(Time+interact)*x+intercept+Agegroup2}
+
+p1 <- ggplot(update_new_On_linear, aes(y = Scores, x = Time.to.death)) +
+  stat_function(fun = equation2,
+                geom = "line",
+                xlim = c(-13, 0),
+                aes(color = "a")) +
+  stat_function(fun = equation3,
+                geom = "line",
+                xlim = c(-11, 0),
+                aes(color = "b")) +
+  stat_function(fun = equation1,
+                geom = "line",
+                xlim = c(-11, 0),
+                aes(color = "c")) +
+  
+  
+  scale_colour_manual(
+    "Age at Diagnosis (PD, n = 29)",
+    values = c("a" = "#FC4E07", "b" = "#E7B800", "c" = "#00AFBB"),
+    labels = c("a" = "< 50", "b" = "50 - 65", "c" = greatequal65)
+  ) +
+  
+  geom_segment(
+    y = 0,
+    yend = 60,
+    x = Inf,
+    xend = Inf,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  geom_segment(
+    y = -Inf,
+    yend = -Inf,
+    x = -13,
+    xend = 0,
+    lwd = 0.5,
+    colour = "grey30",
+    lineend = "square"
+  ) +
+  labs(x = "\nTime prior to death(years)", y = "Scores(UPDRSIII)\n") +
+  scale_x_continuous(limits = c(-16, 0), breaks = seq(-16, 0, 1)) +
+  scale_y_continuous(
+    limits = c(0, 65),
+    breaks = seq(0, 65, 5),
+    position = "right"
+  ) + theme(
+    axis.line = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank(),
+    legend.title = element_text(size = 12.8, color = "black"),
+    legend.text = element_text(size = 12.8),
+    axis.text.x = element_text(size = 12.8, face = "plain"),
+    axis.text.y = element_text(size = 12.8, face = "plain"),
+    axis.title = element_text(size = 13.8, face = "plain"),
+    axis.ticks.length = unit(.18, "cm"),
+    legend.justification = c(0, 1),
+    legend.position = c(0.018, 0.998),
+    legend.background = element_blank(),
+    legend.key = element_blank()
+  ) +
+  coord_cartesian(ylim = c(0, 60), xlim = c(-13, 0))
+
+p1
+```
